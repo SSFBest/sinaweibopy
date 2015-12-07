@@ -224,9 +224,11 @@ class SinaWeiboMixin(SNSMixin):
         Return access token as a JsonDict: {"access_token":"your-access-token","expires":12345678,"uid":1234}, expires is represented using standard unix-epoch-time
         '''
         redirect = redirect_uri or self._redirect_uri
+        # print 'request_access_token 1',code,redirect
         resp_text = _http('POST', 'https://api.weibo.com/oauth2/access_token', \
                 client_id=self._client_id, client_secret=self._client_secret, \
                 redirect_uri=redirect, code=code, grant_type='authorization_code')
+        # print 'request_access_token 2'
         r = _parse_json(resp_text)
         current = int(time.time())
         expires = r.expires_in + current
@@ -312,17 +314,23 @@ class QQMixin(SNSMixin):
         ' parse access token from urlencoded str like access_token=abcxyz&expires_in=123000&other=true '
         r = self._qs2dict(resp_text)
         access_token = r.pop('access_token')
-        expires = time.time() + float(r.pop('expires_in'))
+        expires = int(time.time()) + int(r.pop('expires_in'))
         return JsonDict(access_token=access_token, expires=expires, **r)
 
     def _qs2dict(self, text):
         qs = urlparse.parse_qs(text)
+        print 'qs:'
         return dict(((k, v[0]) for k, v in qs.iteritems()))
 
     def get_openid(self, access_token):
-        resp_text = _http('GET', 'https://graph.z.qq.com/moc2/me', access_token=access_token)
-        r = self._qs2dict(resp_text)
+        resp_text = _http('GET', 'https://graph.qq.com/oauth2.0/me', access_token=access_token)
+        # r = self._qs2dict(resp_text)
+        def callback(str):
+            return str
+        r=eval(resp_text.strip()[0:-1])
+        
         return r['openid']
+
 
 class APIClient(object):
     '''
@@ -366,10 +374,10 @@ class APIClient(object):
         return self._parse_access_token(r)
 
     def is_expires(self):
-        return not self.access_token or time.time() > self.expires
+        return not self._access_token or time.time() > self._expires
 
-    def call_api(self, http_method, http_path, **kw):
-        method, the_url, headers, params = self._mixin._prepare_api(http_method, http_path, self._access_token, **kw)
+    def call_api(self, http_method, http_path, access_token,**kw):
+        method, the_url, headers, params = self._mixin._prepare_api(http_method, http_path, access_token, **kw)
         logging.debug('Call API: %s: %s' % (method, the_url))
         try:
             resp = _http(method, the_url, headers, **params)
@@ -392,8 +400,8 @@ class _Executable(object):
         self._method = method
         self._path = path
 
-    def __call__(self, **kw):
-        return self._client.call_api(self._method, self._path, **kw)
+    def __call__(self, access_token,**kw):
+        return self._client.call_api(self._method, self._path,access_token, **kw)
 
     def __str__(self):
         return '_Executable (%s %s)' % (self._method, self._path)
